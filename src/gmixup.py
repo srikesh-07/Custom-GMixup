@@ -3,6 +3,7 @@ import logging
 import os
 import os.path as osp
 import numpy as np
+import random
 import time
 
 import torch
@@ -249,6 +250,9 @@ if __name__ == '__main__':
     logger.info("args:{}".format(args))
 
     torch.manual_seed(seed)
+    random.seed(seed)
+    np.random.seed(0)
+    torch.use_deterministic_algorithms(True)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logger.info(f"runing device: {device}")
