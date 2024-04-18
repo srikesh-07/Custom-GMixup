@@ -26,20 +26,19 @@ class NormalizedDegree(object):
 
 
 def prepare_synthetic_dataset(dataset):
-        max_degree = 0
-        degs = []
-        for data in dataset:
-            degs += [degree(data.edge_index[0], dtype=torch.long)]
-            max_degree = max(max_degree, degs[-1].max().item())
+    max_degree = 0
+    degs = []
+    for data in dataset:
+        degs += [degree(data.edge_index[0], dtype=torch.long)]
+        max_degree = max(max_degree, degs[-1].max().item())
 
-        for data in dataset:
-            degs = degree(data.edge_index[0], dtype=torch.long)
+    for data in dataset:
+        degs = degree(data.edge_index[0], dtype=torch.long)
 
-            data.x = F.one_hot(degs.to(torch.int64), num_classes=max_degree+1).to(torch.float)
-            print(data.x.shape)
+        data.x = F.one_hot(degs.to(torch.int64), num_classes=max_degree + 1).to(torch.float)
+        print(data.x.shape)
 
-
-        return dataset
+    return dataset
 
 
 def prepare_dataset(dataset):
@@ -60,8 +59,6 @@ def prepare_dataset(dataset):
     return dataset
 
 
-
-
 def graph_numpy2tensor(graphs: List[np.ndarray]) -> torch.Tensor:
     """
     Convert a list of np arrays to a pytorch tensor
@@ -71,7 +68,6 @@ def graph_numpy2tensor(graphs: List[np.ndarray]) -> torch.Tensor:
     """
     graph_tensor = np.array(graphs)
     return torch.from_numpy(graph_tensor).float()
-
 
 
 def align_graphs(graphs: List[np.ndarray],
@@ -129,8 +125,8 @@ def align_graphs(graphs: List[np.ndarray],
     return aligned_graphs, normalized_node_degrees, max_num, min_num
 
 
-
-def align_x_graphs(graphs: List[np.ndarray], node_x: List[np.ndarray], padding: bool = False, N: int = None) -> Tuple[List[np.ndarray], List[np.ndarray], int, int]:
+def align_x_graphs(graphs: List[np.ndarray], node_x: List[np.ndarray], padding: bool = False, N: int = None) -> Tuple[
+    List[np.ndarray], List[np.ndarray], int, int]:
     """
     Align multiple graphs by sorting their nodes by descending node degrees
 
@@ -144,10 +140,16 @@ def align_x_graphs(graphs: List[np.ndarray], node_x: List[np.ndarray], padding: 
     max_num = max(num_nodes)
     min_num = min(num_nodes)
 
+    num_features = [node_x[i].shape[-1] for i in range(len(graphs))]
+    max_features = max(num_features)
+
     aligned_graphs = []
+    aligned_node_x = []
+
     normalized_node_degrees = []
     for i in range(len(graphs)):
         num_i = graphs[i].shape[0]
+        curr_node_x = node_x[i]
 
         node_degree = 0.5 * np.sum(graphs[i], axis=0) + 0.5 * np.sum(graphs[i], axis=1)
         node_degree /= np.sum(node_degree)
@@ -161,8 +163,8 @@ def align_x_graphs(graphs: List[np.ndarray], node_x: List[np.ndarray], padding: 
         sorted_graph = sorted_graph[idx, :]
         sorted_graph = sorted_graph[:, idx]
 
-        node_x = copy.deepcopy( node_x )
-        sorted_node_x = node_x[ idx, :]
+        # node_x = copy.deepcopy( node_x )
+        sorted_node_x = curr_node_x[idx, :]
 
         max_num = max(max_num, N)
         # if max_num < N:
@@ -179,29 +181,26 @@ def align_x_graphs(graphs: List[np.ndarray], node_x: List[np.ndarray], padding: 
             aligned_graphs.append(aligned_graph)
 
             # added
-            aligned_node_x = np.zeros((max_num, 1))
-            aligned_node_x[:num_i, :] = sorted_node_x
-
+            aligned_node = np.zeros((max_num, max_features))
+            aligned_node[:num_i, :] = sorted_node_x
+            aligned_node_x.append(aligned_node)
 
         else:
             normalized_node_degrees.append(sorted_node_degree)
             aligned_graphs.append(sorted_graph)
+            aligned_node_x.append(sorted_node_x)
 
-        if N:
-            aligned_graphs = [aligned_graph[:N, :N] for aligned_graph in aligned_graphs]
-            normalized_node_degrees = normalized_node_degrees[:N]
+    if N:
+        aligned_graphs = [aligned_graph[:N, :N] for aligned_graph in aligned_graphs]
+        normalized_node_degrees = normalized_node_degrees[:N]
 
-            #added
-            aligned_node_x = aligned_node_x[:N]
+        # added
+        aligned_node_x = [feature[:N, :] for feature in aligned_node_x]
 
     return aligned_graphs, aligned_node_x, normalized_node_degrees, max_num, min_num
 
 
-
-
-
 def two_graphons_mixup(two_graphons, la=0.5, num_sample=20):
-
     label = la * two_graphons[0][0] + (1 - la) * two_graphons[1][0]
     new_graphon = la * two_graphons[0][1] + (1 - la) * two_graphons[1][1]
 
@@ -210,7 +209,6 @@ def two_graphons_mixup(two_graphons, la=0.5, num_sample=20):
 
     sample_graphs = []
     for i in range(num_sample):
-
         sample_graph = (np.random.rand(*new_graphon.shape) <= new_graphon).astype(np.int32)
         sample_graph = np.triu(sample_graph)
         sample_graph = sample_graph + sample_graph.T - np.diag(np.diag(sample_graph))
@@ -229,14 +227,12 @@ def two_graphons_mixup(two_graphons, la=0.5, num_sample=20):
         pyg_graph.num_nodes = num_nodes
         pyg_graph.org_nodes = torch.tensor(num_nodes, dtype=torch.long)
         sample_graphs.append(pyg_graph)
-        
+
         # print(edge_index)
     return sample_graphs
 
 
-
 def two_x_graphons_mixup(two_x_graphons, la=0.5, num_sample=20):
-
     label = la * two_x_graphons[0][0] + (1 - la) * two_x_graphons[1][0]
     new_graphon = la * two_x_graphons[0][1] + (1 - la) * two_x_graphons[1][1]
     new_x = la * two_x_graphons[0][2] + (1 - la) * two_x_graphons[1][2]
@@ -247,7 +243,6 @@ def two_x_graphons_mixup(two_x_graphons, la=0.5, num_sample=20):
 
     sample_graphs = []
     for i in range(num_sample):
-
         sample_graph = (np.random.rand(*new_graphon.shape) <= new_graphon).astype(np.int32)
         sample_graph = np.triu(sample_graph)
         sample_graph = sample_graph + sample_graph.T - np.diag(np.diag(sample_graph))
@@ -260,16 +255,18 @@ def two_x_graphons_mixup(two_x_graphons, la=0.5, num_sample=20):
 
         num_nodes = int(torch.max(edge_index)) + 1
 
-        pyg_graph = Data()
-        pyg_graph.y = sample_graph_label
-        pyg_graph.x = sample_graph_x
-        pyg_graph.edge_index = edge_index
-        pyg_graph.num_nodes = num_nodes
+        pyg_graph = Data(x=sample_graph_x[:num_nodes, :],
+                         edge_index=edge_index,
+                         y=sample_graph_label)
+        # pyg_graph.y = sample_graph_label
+        # pyg_graph.x = sample_graph_x[:num_nodes, :]
+        # pyg_graph.edge_index = edge_index
+        # pyg_graph.num_nodes = num_nodes
+        pyg_graph.org_nodes = torch.tensor(num_nodes, dtype=torch.long)
         sample_graphs.append(pyg_graph)
-        
+
         # print(edge_index)
     return sample_graphs
-
 
 
 def graphon_mixup(dataset, la=0.5, num_sample=20):
@@ -292,7 +289,6 @@ def graphon_mixup(dataset, la=0.5, num_sample=20):
 
     sample_graphs = []
     for i in range(num_sample):
-
         sample_graph = (np.random.rand(*new_graphon.shape) < new_graphon).astype(np.int32)
         sample_graph = np.triu(sample_graph)
         sample_graph = sample_graph + sample_graph.T - np.diag(np.diag(sample_graph))
@@ -321,7 +317,6 @@ def graphon_mixup(dataset, la=0.5, num_sample=20):
 
 
 def estimate_graphon(dataset, graphon_estimator):
-
     y_list = []
     for data in dataset:
         y_list.append(tuple(data.y.tolist()))
@@ -337,7 +332,7 @@ def estimate_graphon(dataset, graphon_estimator):
 
     graphons = []
     for class_label in set(y_list):
-        c_graph_list = [ all_graphs_list[i] for i in range(len(y_list)) if y_list[i] == class_label ]
+        c_graph_list = [all_graphs_list[i] for i in range(len(y_list)) if y_list[i] == class_label]
 
         aligned_adj_list, normalized_node_degrees, max_num, min_num = align_graphs(c_graph_list, padding=True, N=400)
 
@@ -348,9 +343,7 @@ def estimate_graphon(dataset, graphon_estimator):
     return graphons
 
 
-
 def estimate_one_graphon(aligned_adj_list: List[np.ndarray], method="universal_svd"):
-
     if method == "universal_svd":
         graphon = universal_svd(aligned_adj_list, threshold=0.2)
     else:
@@ -359,9 +352,7 @@ def estimate_one_graphon(aligned_adj_list: List[np.ndarray], method="universal_s
     return graphon
 
 
-
 def split_class_x_graphs(dataset):
-
     y_list = []
     for data in dataset:
         y_list.append(tuple(data.y.tolist()))
@@ -373,19 +364,18 @@ def split_class_x_graphs(dataset):
     for graph in dataset:
         adj = to_dense_adj(graph.edge_index)[0].numpy()
         all_graphs_list.append(adj)
-        all_node_x_list = [graph.x.numpy()]
+        all_node_x_list.append(graph.x.numpy())
 
     class_graphs = []
     for class_label in set(y_list):
         c_graph_list = [all_graphs_list[i] for i in range(len(y_list)) if y_list[i] == class_label]
         c_node_x_list = [all_node_x_list[i] for i in range(len(y_list)) if y_list[i] == class_label]
-        class_graphs.append( ( np.array(class_label), c_graph_list, c_node_x_list ) )
+        class_graphs.append((np.array(class_label), c_graph_list, c_node_x_list))
 
     return class_graphs
 
 
 def split_class_graphs(dataset):
-
     y_list = []
     for data in dataset:
         y_list.append(tuple(data.y.tolist()))
@@ -400,11 +390,9 @@ def split_class_graphs(dataset):
     class_graphs = []
     for class_label in set(y_list):
         c_graph_list = [all_graphs_list[i] for i in range(len(y_list)) if y_list[i] == class_label]
-        class_graphs.append( ( np.array(class_label), c_graph_list ) )
+        class_graphs.append((np.array(class_label), c_graph_list))
 
     return class_graphs
-
-
 
 
 def universal_svd(aligned_graphs: List[np.ndarray], threshold: float = 2.02) -> np.ndarray:
@@ -420,8 +408,9 @@ def universal_svd(aligned_graphs: List[np.ndarray], threshold: float = 2.02) -> 
     :param threshold: the threshold for singular values
     :return: graphon: the estimated (r, r) graphon model
     """
-    aligned_graphs = graph_numpy2tensor(aligned_graphs).to( "cuda" )
+    aligned_graphs = graph_numpy2tensor(aligned_graphs).to("cuda")
     num_graphs = aligned_graphs.size(0)
+    print("GDFGDF: ", num_graphs)
 
     if num_graphs > 1:
         sum_graph = torch.mean(aligned_graphs, dim=0)
@@ -478,13 +467,14 @@ def stat_graph(graphs_list: List[Data]):
     num_total_edges = []
     for graph in graphs_list:
         num_total_nodes.append(graph.num_nodes)
-        num_total_edges.append(  graph.edge_index.shape[1] )
-    avg_num_nodes = sum( num_total_nodes ) / len(graphs_list)
-    avg_num_edges = sum( num_total_edges ) / len(graphs_list) / 2.0
+        num_total_edges.append(graph.edge_index.shape[1])
+    avg_num_nodes = sum(num_total_nodes) / len(graphs_list)
+    avg_num_edges = sum(num_total_edges) / len(graphs_list) / 2.0
     avg_density = avg_num_edges / (avg_num_nodes * avg_num_nodes)
 
-    median_num_nodes = np.median( num_total_nodes ) 
+    median_num_nodes = np.median(num_total_nodes)
     median_num_edges = np.median(num_total_edges)
     median_density = median_num_edges / (median_num_nodes * median_num_nodes)
 
     return avg_num_nodes, avg_num_edges, avg_density, median_num_nodes, median_num_edges, median_density
+
