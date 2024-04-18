@@ -1,3 +1,4 @@
+
 from time import time
 import logging
 import os
@@ -33,9 +34,11 @@ formatter = logging.Formatter('%(asctime)s - %(levelname)s: - %(message)s', date
 
 
 def add_org_nodes(data: torch_geometric.data.Data):
-    data.org_nodes = torch.tensor(data.num_nodes, dtype=torch.long)
+    data.num_nodes = torch.tensor(data.num_nodes, dtype=torch.long)
+    data.org_nodes = data.num_nodes.clone().detach()
     if data.x is not None:
         data.x = data.x.to(torch.float32)
+    data.edge_attr=None
     return data
 
 
@@ -58,7 +61,7 @@ def k_fold(dataset, folds, y=None):
 
 
 def prepare_dataset_x(dataset):
-    if dataset[0].x is None:
+    if dataset[-1].x is None or dataset[-1].x.shape[-1] == 0:
         max_degree = 0
         degs = []
         for data in dataset:
@@ -260,6 +263,7 @@ if __name__ == '__main__':
 
     path = osp.join(data_path, dataset_name)
     dataset = TUDataset(path, name=dataset_name, transform=add_org_nodes)
+    total_instances = len(dataset)
 
     if dataset.data.x is None or dataset.data.x.shape[1] == 0:
         org_x_features = False
@@ -292,15 +296,16 @@ if __name__ == '__main__':
         else:
             y = dataset.data.y.tolist()
 
-    dataset = prepare_dataset_x(dataset)
+    # if not org_x_features:
+    #     dataset = prepare_dataset_x(dataset)
+        # org_x_features=True
+
     dataset = prepare_dataset_onehot_y(dataset)
     
     for fold, (train_idx, test_idx,
             val_idx) in enumerate(zip(*k_fold(dataset, args.folds, y))):
 
         train_dataset = [dataset[idx] for idx in train_idx.tolist()]
-        val_dataset = [dataset[idx] for idx in val_idx.tolist()]
-        test_dataset = [dataset[idx] for idx in test_idx.tolist()]
 
         avg_num_nodes, avg_num_edges, avg_density, median_num_nodes, median_num_edges, median_density = stat_graph(train_dataset)
         logger.info(f"avg num nodes of training graphs: { avg_num_nodes }")
@@ -323,6 +328,7 @@ if __name__ == '__main__':
                 tail_train_dataset = train_dataset
 
             if org_x_features:
+                logger.info("Using the existing features of the Dataset")
                 class_graphs = split_class_x_graphs(tail_train_dataset)
                 graphons = []
                 for label, graphs, features in class_graphs:
@@ -340,6 +346,7 @@ if __name__ == '__main__':
                     logger.info(f"graphon info: label:{label}; mean: {graphon.mean()}, shape, {graphon.shape}, "
                                 f"features: {features.shape}")
             else:
+                logger.info("Creating the new features of the Dataset")
                 class_graphs = split_class_graphs(tail_train_dataset)
                 graphons = []
                 for label, graphs in class_graphs:
@@ -375,16 +382,27 @@ if __name__ == '__main__':
             logger.info(f"median num edges of new graphs: { median_num_edges }")
             logger.info(f"median density of new graphs: { median_density }")
 
-            train_dataset = new_graph + train_dataset
+            # train_dataset = new_graph + train_dataset
+
             logger.info( f"real aug ratio: {len( new_graph ) / train_nums }" )
             train_nums = train_nums + len(new_graph)
 
-        train_dataset = prepare_dataset_x(train_dataset)
+            if not org_x_features:
+                temp_dataset = prepare_dataset_x(dataset + new_graph)
+                train_dataset = [temp_dataset[idx] for idx in train_idx.tolist()] + temp_dataset[total_instances:]
+                val_dataset = [temp_dataset[idx] for idx in val_idx.tolist()]
+                test_dataset = [temp_dataset[idx] for idx in test_idx.tolist()]
+            else:
+                train_dataset = train_dataset + new_graph
+                val_dataset = [dataset[idx] for idx in val_idx.tolist()]
+                test_dataset = [dataset[idx] for idx in test_idx.tolist()]
+        #     train_dataset = prepare_dataset_x(train_dataset)
 
         logger.info(f"num_features: {dataset[0].x.shape}" )
         logger.info(f"num_classes: {dataset[0].y.shape}"  )
 
-        num_features = dataset[0].x.shape[1]
+
+        num_features = dataset[0].x.shape[-1]
         num_classes = dataset[0].y.shape[0]
 
         logger.info(f"train_dataset size: {len(train_dataset)}")
@@ -456,4 +474,3 @@ if __name__ == '__main__':
                         f"Tail Mean: {round(tail_acc_mean, 4)}, \n"
                         f"Std Tail Mean: {round(tail_acc_std, 4)} \n\n"
                         )
-
