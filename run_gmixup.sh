@@ -1,7 +1,7 @@
 #!/bin/bash
 
 seed=0
-epochs=200
+epoch=200
 
 python -u ./src/gmixup.py --data_path . --model GIN --dataset PTC_MR \
 --lr 0.01 --gmixup True --seed=$seed  --log_screen True --batch_size 128 --num_hidden 64 \
