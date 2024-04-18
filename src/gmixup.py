@@ -19,8 +19,9 @@ from torch.optim.lr_scheduler import StepLR
 from sklearn.model_selection import StratifiedKFold
 from torch import tensor
 from categorizer import GraphCategorizer
-from utils import stat_graph, split_class_graphs, align_graphs
-from utils import two_graphons_mixup, universal_svd
+from utils import stat_graph, split_class_graphs, align_graphs, align_x_graphs
+from utils import split_class_x_graphs
+from utils import two_graphons_mixup, two_x_graphons_mixup
 from graphon_estimator import universal_svd
 from models import GIN
 
@@ -259,6 +260,12 @@ if __name__ == '__main__':
 
     path = osp.join(data_path, dataset_name)
     dataset = TUDataset(path, name=dataset_name, transform=add_org_nodes)
+
+    if dataset.data.x is None or dataset.data.x.shape[1] == 0:
+        org_x_features = False
+    else:
+        org_x_features = True
+
     dataset = list(dataset)
 
     for graph in dataset:
@@ -315,32 +322,49 @@ if __name__ == '__main__':
             else:
                 tail_train_dataset = train_dataset
 
-            class_graphs = split_class_graphs(tail_train_dataset)
-            graphons = []
-            for label, graphs in class_graphs:
+            if org_x_features:
+                class_graphs = split_class_x_graphs(tail_train_dataset)
+                graphons = []
+                for label, graphs, features in class_graphs:
+                    logger.info(f"label: {label}, num_graphs:{len(graphs)}, num_features: {len(features)}")
+                    align_graphs_list, align_node_features, normalized_node_degrees, max_num, min_num = align_x_graphs(
+                        graphs, features, padding=True, N=resolution)
+                    logger.info(f"aligned graph {align_graphs_list[0].shape}, "
+                                f"align features {align_node_features[0].shape}")
+                    logger.info(f"ge: {ge}")
+                    graphon = universal_svd(align_graphs_list, threshold=0.2)
+                    align_node_features = np.mean(align_node_features, axis=0)
+                    graphons.append((label, graphon, align_node_features))
+
+                for label, graphon, features in graphons:
+                    logger.info(f"graphon info: label:{label}; mean: {graphon.mean()}, shape, {graphon.shape}, "
+                                f"features: {features.shape}")
+            else:
+                class_graphs = split_class_graphs(tail_train_dataset)
+                graphons = []
+                for label, graphs in class_graphs:
                     logger.info(f"label: {label}, num_graphs:{len(graphs)}" )
                     align_graphs_list, normalized_node_degrees, max_num, min_num = align_graphs(
                         graphs, padding=True, N=resolution)
                     logger.info(f"aligned graph {align_graphs_list[0].shape}" )
-
                     logger.info(f"ge: {ge}")
                     graphon = universal_svd(align_graphs_list, threshold=0.2)
                     graphons.append((label, graphon))
+                for label, graphon in graphons:
+                    logger.info(f"graphon info: label:{label}; mean: {graphon.mean()}, shape, {graphon.shape}")
 
-
-            for label, graphon in graphons:
-                logger.info(f"graphon info: label:{label}; mean: {graphon.mean()}, shape, {graphon.shape}")
-            
             train_nums = len(train_idx)
             num_sample = int( train_nums * aug_ratio / aug_num )
             lam_list = np.random.uniform(low=lam_range[0], high=lam_range[1], size=(aug_num,))
 
             new_graph = []
+            mixup_func = two_x_graphons_mixup if org_x_features else two_graphons_mixup
+
             for lam in lam_list:
                 logger.info( f"lam: {lam}" )
                 logger.info(f"num_sample: {num_sample}")
                 two_graphons = random.sample(graphons, 2)
-                new_graph += two_graphons_mixup(two_graphons, la=lam, num_sample=num_sample)
+                new_graph += mixup_func(two_graphons, la=lam, num_sample=num_sample)
                 logger.info(f"label: {new_graph[-1].y}")
 
             avg_num_nodes, avg_num_edges, avg_density, median_num_nodes, median_num_edges, median_density = stat_graph(new_graph)
