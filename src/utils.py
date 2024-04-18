@@ -261,8 +261,8 @@ def two_x_graphons_mixup(two_x_graphons, la=0.5, num_sample=20):
         # pyg_graph.y = sample_graph_label
         # pyg_graph.x = sample_graph_x[:num_nodes, :]
         # pyg_graph.edge_index = edge_index
-        # pyg_graph.num_nodes = num_nodes
-        pyg_graph.org_nodes = torch.tensor(num_nodes, dtype=torch.long)
+        pyg_graph.num_nodes = torch.tensor(num_nodes, dtype=torch.long)
+        pyg_graph.org_nodes = pyg_graph.num_nodes.clone().detach()
         sample_graphs.append(pyg_graph)
 
         # print(edge_index)
@@ -309,7 +309,7 @@ def graphon_mixup(dataset, la=0.5, num_sample=20):
         pyg_graph = Data()
         pyg_graph.y = sample_graph_label
         pyg_graph.edge_index = edge_index
-        pyg_graph.num_nodes = num_nodes
+        pyg_graph.num_nodes = torch.tensor(num_nodes, dtype=torch.long)
 
         sample_graphs.append(pyg_graph)
         # print(edge_index)
@@ -477,4 +477,3 @@ def stat_graph(graphs_list: List[Data]):
     median_density = median_num_edges / (median_num_nodes * median_num_nodes)
 
     return avg_num_nodes, avg_num_edges, avg_density, median_num_nodes, median_num_edges, median_density
-
