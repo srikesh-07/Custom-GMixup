@@ -463,7 +463,7 @@ if __name__ == '__main__':
                         f"Model: {args.model}, \n"
                         f"Num Layers: {args.num_hidden}, \n"
                         f"G-Mixup: {args.gmixup}, \n"
-                        f"Only Tail Augmentation: {args.gmixup}, \n"
+                        f"Only Tail Augmentation: {args.tail_aug}, \n"
                         f"Test Mean: {round(acc_mean, 4)}, \n"
                         f"Std Test Mean: {round(acc_std, 4)}, \n"
                         f"Head Mean: {round(head_acc_mean, 4)}, \n"
